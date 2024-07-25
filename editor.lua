@@ -3,7 +3,7 @@ local editor = {}
 local map = {}
 local spawnPoint = { x = 100, y = 100 }
 local currentBlock = { x = 0, y = 0, width = 50, height = 50 }
-local placingMode = "block" -- block, spawn
+local placingMode = "block" -- block, spawn, finish
 local camera = { x = 0, y = 0, speed = 200 }
 
 function editor.load()
@@ -57,9 +57,10 @@ function editor.draw()
     love.graphics.print("Click to place blocks", 10, 50)
     love.graphics.print("Right click to delete blocks", 10, 70)
     love.graphics.print("Press P to place spawn point", 10, 90)
-    love.graphics.print("Use arrow keys to scroll", 10, 110)
-    love.graphics.print("Press ESC to return to the menu", 10, 130)
-    love.graphics.print("Current mode: " .. placingMode, 10, 150)
+    love.graphics.print("Press F to place finish block", 10, 110)
+    love.graphics.print("Use arrow keys to scroll", 10, 130)
+    love.graphics.print("Press ESC to return to the menu", 10, 150)
+    love.graphics.print("Current mode: " .. placingMode, 10, 170)
 end
 
 function editor.keypressed(key)
@@ -69,6 +70,8 @@ function editor.keypressed(key)
         editor.loadMap("map.lua")
     elseif key == "p" then
         placingMode = "spawn"
+    elseif key == "f" then
+        placingMode = "finish"
     else
         placingMode = "block"
     end
@@ -77,6 +80,9 @@ end
 function editor.mousepressed(x, y, button)
     if button == 1 then
         if placingMode == "spawn" then
+            placingMode = "block"
+        elseif placingMode == "finish" then
+            table.insert(map, { x = currentBlock.x, y = currentBlock.y, width = currentBlock.width, height = currentBlock.height, finish = true })
             placingMode = "block"
         else
             table.insert(map, { x = currentBlock.x, y = currentBlock.y, width = currentBlock.width, height = currentBlock.height })
@@ -110,7 +116,11 @@ end
 function tableToString(tbl)
     local result = "{\n"
     for _, item in ipairs(tbl) do
-        result = result .. string.format("        { x = %d, y = %d, width = %d, height = %d },\n", item.x, item.y, item.width, item.height)
+        if item.finish then
+            result = result .. string.format("        { x = %d, y = %d, width = %d, height = %d, finish = true },\n", item.x, item.y, item.width, item.height)
+        else
+            result = result .. string.format("        { x = %d, y = %d, width = %d, height = %d },\n", item.x, item.y, item.width, item.height)
+        end
     end
     result = result .. "    }"
     return result
