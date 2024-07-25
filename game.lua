@@ -46,7 +46,7 @@ function game.update(dt)
         end
     end
 
-    -- Prevent cube from moving out of bounds (if necessary)
+   --[[ -- Prevent cube from moving out of bounds (if necessary)
     local screenWidth, screenHeight = love.graphics.getDimensions()
     if cube.x < 0 then
         cube.x = 0
@@ -62,7 +62,7 @@ function game.update(dt)
     elseif cube.y + cube.size > screenHeight then
         cube.y = screenHeight - cube.size
         cube.dy = -math.abs(cube.dy)
-    end
+    end]]
 end
 
 function game.draw()
