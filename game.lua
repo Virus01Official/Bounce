@@ -20,6 +20,12 @@ function game.update(dt)
     -- Check for collision with blocks and respond based on wall hit
     for _, block in ipairs(map) do
         if checkCollision(cube, block) then
+            if block.finish and checkCollision(cube, block) then
+                game.resetCube()
+                switchScene("menu")
+                return
+            end
+            
             if cube.x + cube.size > block.x and cube.x < block.x + block.width then
                 -- Vertical collision
                 if cube.y < block.y then
@@ -45,24 +51,6 @@ function game.update(dt)
             love.audio.newSource("bounce.ogg", "static"):play()
         end
     end
-
-   --[[ -- Prevent cube from moving out of bounds (if necessary)
-    local screenWidth, screenHeight = love.graphics.getDimensions()
-    if cube.x < 0 then
-        cube.x = 0
-        cube.dx = math.abs(cube.dx)
-    elseif cube.x + cube.size > screenWidth then
-        cube.x = screenWidth - cube.size
-        cube.dx = -math.abs(cube.dx)
-    end
-
-    if cube.y < 0 then
-        cube.y = 0
-        cube.dy = math.abs(cube.dy)
-    elseif cube.y + cube.size > screenHeight then
-        cube.y = screenHeight - cube.size
-        cube.dy = -math.abs(cube.dy)
-    end]]
 end
 
 function game.draw()
