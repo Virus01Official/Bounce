@@ -7,11 +7,20 @@ local placingMode = "block" -- block, spawn, finish, resize
 local camera = { x = 0, y = 0, speed = 200 }
 local resizingBlock = nil
 local mousePressed = false
+local filenameInputMode = false
+local filenameBuffer = ""
+local mapFiles = {}
+local selectedMapIndex = 1
+local loadingMap = false
+local serpent = require("serpent")
 
 function editor.load()
+    editor.loadMapFiles()
 end
 
 function editor.update(dt)
+    if filenameInputMode or loadingMap then return end
+
     local x, y = love.mouse.getPosition()
     local adjustedX, adjustedY = x + camera.x, y + camera.y
 
@@ -19,12 +28,10 @@ function editor.update(dt)
     if placingMode == "spawn" then
         spawnPoint.x = adjustedX
         spawnPoint.y = adjustedY
-    elseif placingMode == "resize" and resizingBlock then
-        if mousePressed then
-            -- Update the dimensions of the resizing block only while the mouse is pressed
-            resizingBlock.width = adjustedX - resizingBlock.x
-            resizingBlock.height = adjustedY - resizingBlock.y
-        end
+    elseif placingMode == "resize" and resizingBlock and mousePressed then
+        -- Update the dimensions of the resizing block only while the mouse is pressed
+        resizingBlock.width = math.max(1, adjustedX - resizingBlock.x)
+        resizingBlock.height = math.max(1, adjustedY - resizingBlock.y)
     else
         currentBlock.x = adjustedX - currentBlock.width / 2
         currentBlock.y = adjustedY - currentBlock.height / 2
@@ -73,21 +80,67 @@ function editor.draw()
     love.graphics.print("Use arrow keys to scroll", 10, 150)
     love.graphics.print("Press ESC to return to the menu", 10, 170)
     love.graphics.print("Current mode: " .. placingMode, 10, 190)
+
+    if filenameInputMode then
+        love.graphics.print("Enter filename and press Enter:", 10, 210)
+        love.graphics.print(filenameBuffer, 10, 230)
+    end
+
+    if loadingMap then
+        love.graphics.print("Select a map to load:", 10, 210)
+        for i, filename in ipairs(mapFiles) do
+            local y = 230 + 20 * (i - 1)
+            if i == selectedMapIndex then
+                love.graphics.print("> " .. filename, 10, y)
+            else
+                love.graphics.print(filename, 10, y)
+            end
+        end
+    end
 end
 
 function editor.keypressed(key)
-    if key == "s" then
-        editor.saveMap("map.lua")
-    elseif key == "l" then
-        editor.loadMap("map.lua")
-    elseif key == "p" then
-        placingMode = "spawn"
-    elseif key == "f" then
-        placingMode = "finish"
-    elseif key == "r" then
-        placingMode = "resize"
+    if filenameInputMode then
+        if key == "backspace" then
+            filenameBuffer = filenameBuffer:sub(1, -2)
+        elseif key == "return" then
+            editor.saveMap("maps/" .. filenameBuffer .. ".bmap")
+            filenameInputMode = false
+            filenameBuffer = ""
+        else
+            filenameBuffer = filenameBuffer .. key
+        end
+    elseif loadingMap then
+        if key == "up" then
+            selectedMapIndex = selectedMapIndex - 1
+            if selectedMapIndex < 1 then
+                selectedMapIndex = #mapFiles
+            end
+        elseif key == "down" then
+            selectedMapIndex = selectedMapIndex + 1
+            if selectedMapIndex > #mapFiles then
+                selectedMapIndex = 1
+            end
+        elseif key == "return" then
+            editor.loadMap(mapFiles[selectedMapIndex])
+            loadingMap = false
+        elseif key == "escape" then
+            loadingMap = false
+        end
     else
-        placingMode = "block"
+        if key == "s" then
+            filenameInputMode = true
+        elseif key == "l" then
+            loadingMap = true
+        elseif key == "p" then
+            placingMode = "spawn"
+        elseif key == "f" then
+            placingMode = "finish"
+        elseif key == "r" then
+            placingMode = "resize"
+        else
+            placingMode = "block"
+        end
     end
 end
 
@@ -117,7 +170,7 @@ function editor.mousepressed(x, y, button)
             local block = map[i]
             if adjustedX >= block.x and adjustedX <= block.x + block.width and adjustedY >= block.y and adjustedY <= block.y + block.height then
                 table.remove(map, i)
-                return
+                break
             end
         end
     end
@@ -126,42 +179,46 @@ end
 function editor.mousereleased(x, y, button)
     if button == 1 then
         mousePressed = false
-    end
-end
-
-function editor.mousemoved(x, y, dx, dy)
-    if placingMode == "resize" and resizingBlock and mousePressed then
-        local adjustedX, adjustedY = x + camera.x, y + camera.y
-        resizingBlock.width = adjustedX - resizingBlock.x
-        resizingBlock.height = adjustedY - resizingBlock.y
+        resizingBlock = nil
     end
 end
 
 function editor.saveMap(filename)
-    local mapString = "return {\n    map = " .. tableToString(map) .. ",\n    spawnPoint = { x = " .. spawnPoint.x .. ", y = " .. spawnPoint.y .. " }\n}"
-    love.filesystem.write(filename, mapString)
+    local data = { map = map, spawnPoint = spawnPoint }
+    local serializedData = serpent.block(data)
+    love.filesystem.write(filename, serializedData)
 end
 
 function editor.loadMap(filename)
-    local mapFile = love.filesystem.load(filename)
-    if mapFile then
-        local loadedData = mapFile()
-        map = loadedData.map
-        spawnPoint = loadedData.spawnPoint
+    local data, size = love.filesystem.read(filename)
+    if not data then
+        error("Failed to read map file: " .. tostring(filename))
     end
+    
+    local func, err = load("return " .. data)
+    if not func then
+        error("Failed to load map data: " .. tostring(err))
+    end
+    
+    local success, mapData = pcall(func)
+    if not success then
+        error("Error while running map data: " .. tostring(mapData))
+    end
+
+    map = mapData.map
+    spawnPoint = mapData.spawnPoint
 end
 
-function tableToString(tbl)
-    local result = "{\n"
-    for _, item in ipairs(tbl) do
-        if item.finish then
-            result = result .. string.format("        { x = %d, y = %d, width = %d, height = %d, finish = true },\n", item.x, item.y, item.width, item.height)
-        else
-            result = result .. string.format("        { x = %d, y = %d, width = %d, height = %d },\n", item.x, item.y, item.width, item.height)
+function editor.loadMapFiles()
+    local files = love.filesystem.getDirectoryItems("maps")
+    for _, file in ipairs(files) do
+        if file:match("%.bmap$") then
+            table.insert(mapFiles, "maps/" .. file)
         end
     end
-    result = result .. "    }"
-    return result
+    if #mapFiles == 0 then
+        error("No map files found in the 'maps' folder")
+    end
 end
 
 return editor
